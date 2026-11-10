@@ -12,6 +12,7 @@ import uuid
 from binascii import Error as BinasciiError
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, NotRequired, cast
 
@@ -93,23 +94,28 @@ from deepagents.middleware._video import (
     video_dependencies_available,
 )
 
+
 # `ChatOpenAI`, `AzureChatOpenAI`, and `ChatGoogleGenerativeAI` accept non-PDF
 # `file` blocks such as `.docx` and `.pptx`. `ModelProfile` only encodes PDF
 # support today, so these providers get a hard-coded pass until profiles can
 # describe support for other office and document formats.
-try:
-    from langchain_openai import AzureChatOpenAI as _AzureChatOpenAI, ChatOpenAI as _ChatOpenAI
-except ImportError:
-    _OPENAI_FILE_MODEL_TYPES: tuple[type[Any], ...] = ()
-else:
-    _OPENAI_FILE_MODEL_TYPES = (_AzureChatOpenAI, _ChatOpenAI)
+@cache
+def _file_model_types() -> tuple[type[Any], ...]:
+    """Resolve optional provider classes only when checking file capabilities."""
+    try:
+        from langchain_openai import AzureChatOpenAI, ChatOpenAI  # noqa: PLC0415  # Load only for file capability checks.
+    except ImportError:
+        openai_types: tuple[type[Any], ...] = ()
+    else:
+        openai_types = (AzureChatOpenAI, ChatOpenAI)
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: PLC0415  # Load only for file capability checks.
+    except ImportError:
+        google_types: tuple[type[Any], ...] = ()
+    else:
+        google_types = (ChatGoogleGenerativeAI,)
+    return openai_types + google_types
 
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI as _ChatGoogleGenerativeAI
-except ImportError:
-    _GOOGLE_FILE_MODEL_TYPES: tuple[type[Any], ...] = ()
-else:
-    _GOOGLE_FILE_MODEL_TYPES = (_ChatGoogleGenerativeAI,)
 
 if TYPE_CHECKING:
     from langchain.chat_models import BaseChatModel
@@ -232,7 +238,7 @@ _TOOL_MESSAGE_FIELD_BY_BLOCK_TYPE: Final = {"image": "image_tool_message", "file
 
 def _model_tolerates_non_pdf_files(model: "BaseChatModel | None") -> bool:
     """Whether `model` is a provider class known to accept non-PDF `file` blocks."""
-    return isinstance(model, _OPENAI_FILE_MODEL_TYPES + _GOOGLE_FILE_MODEL_TYPES)
+    return isinstance(model, _file_model_types())
 
 
 def _multimodal_block_supported(
