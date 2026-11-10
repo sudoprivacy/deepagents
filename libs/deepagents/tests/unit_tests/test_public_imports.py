@@ -143,6 +143,7 @@ def test_subagent_reflection_does_not_load_unrelated_middleware() -> None:
                     "deepagents.graph", "deepagents.middleware.async_subagents",
                     "deepagents.middleware.memory", "deepagents.middleware.rubric",
                     "deepagents.middleware.skills", "langchain_anthropic",
+                    "langchain_openai", "langchain_google_genai",
                 )
                 if any(fullname == name or fullname.startswith(name + ".") for name in unrelated):
                     raise AssertionError("type reflection attempted unrelated import: " + fullname)
@@ -180,4 +181,38 @@ def test_concurrent_root_and_middleware_exports_share_original_definitions() -> 
             assert value is getattr(module, name)
             if name in middleware.__all__:
                 assert value is getattr(middleware, name), name
+    """)
+
+
+def test_file_capabilities_preserve_actual_provider_classes_and_subclasses() -> None:
+    _run_in_fresh_process("""
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_openai import AzureChatOpenAI, ChatOpenAI
+        from deepagents.middleware.filesystem import _model_tolerates_non_pdf_files
+
+        class CustomOpenAI(ChatOpenAI):
+            pass
+
+        for model_type in (ChatOpenAI, AzureChatOpenAI, ChatGoogleGenerativeAI, CustomOpenAI):
+            assert _model_tolerates_non_pdf_files(model_type.model_construct())
+        assert not _model_tolerates_non_pdf_files(None)
+        assert not _model_tolerates_non_pdf_files(object())
+    """)
+
+
+def test_file_capabilities_work_when_optional_providers_are_unavailable() -> None:
+    _run_in_fresh_process("""
+        import sys
+        from importlib.abc import MetaPathFinder
+
+        class MissingProviders(MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname in ("langchain_openai", "langchain_google_genai"):
+                    raise ModuleNotFoundError(fullname)
+                return None
+
+        sys.meta_path.insert(0, MissingProviders())
+        from deepagents.middleware.filesystem import _model_tolerates_non_pdf_files
+        assert not _model_tolerates_non_pdf_files(None)
+        assert not _model_tolerates_non_pdf_files(object())
     """)

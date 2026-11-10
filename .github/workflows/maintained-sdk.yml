@@ -38,8 +38,8 @@ jobs:
       - run: uv sync --locked --all-groups
       - name: Lint and typecheck
         run: |
-          uv run --no-sync ruff check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
-          uv run --no-sync ruff format --check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ruff check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/middleware/filesystem.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ruff format --check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/middleware/filesystem.py deepagents/_version.py tests/unit_tests/test_public_imports.py
           uv run --no-sync ty check deepagents
       - name: Original SDK suite and import controls
         run: uv run --no-sync --group test pytest tests/unit_tests -n 2 --disable-socket --allow-unix-socket --benchmark-disable --maxfail=1 --maxschedchunk=1 --junitxml "$RUNNER_TEMP/sdk.xml"
