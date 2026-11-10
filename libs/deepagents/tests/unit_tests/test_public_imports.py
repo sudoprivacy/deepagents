@@ -111,3 +111,73 @@ def test_profile_registration_survives_later_graph_import() -> None:
         profile = get_provider_profile("owner2-fixture:local")
         assert profile.init_kwargs == {"timeout": 11, "max_retries": 2}
     """)
+
+
+def test_middleware_namespace_does_not_initialize_agent_components() -> None:
+    _run_in_fresh_process("""
+        import sys
+        import deepagents.middleware as middleware
+
+        assert set(middleware.__all__) <= set(dir(middleware))
+        assert "deepagents.graph" not in sys.modules
+        assert "deepagents.middleware.subagents" not in sys.modules
+        assert "langchain_anthropic" not in sys.modules
+        try:
+            middleware.unknown_public_name
+        except AttributeError as error:
+            assert "deepagents.middleware" in str(error)
+        else:
+            raise AssertionError("unknown middleware accepted")
+    """)
+
+
+def test_subagent_reflection_does_not_load_unrelated_middleware() -> None:
+    _run_in_fresh_process("""
+        import sys
+        from importlib.abc import MetaPathFinder
+        from typing import get_type_hints
+
+        class RefuseUnrelatedMiddleware(MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                unrelated = (
+                    "deepagents.graph", "deepagents.middleware.async_subagents",
+                    "deepagents.middleware.memory", "deepagents.middleware.rubric",
+                    "deepagents.middleware.skills", "langchain_anthropic",
+                )
+                if any(fullname == name or fullname.startswith(name + ".") for name in unrelated):
+                    raise AssertionError("type reflection attempted unrelated import: " + fullname)
+                return None
+
+        sys.meta_path.insert(0, RefuseUnrelatedMiddleware())
+        import deepagents
+        from deepagents import SubAgent
+        from deepagents.middleware import SubAgent as MiddlewareSubAgent
+        from deepagents.middleware.subagents import SubAgent as OriginalSubAgent
+
+        class Config:
+            subagents: list[deepagents.SubAgent] | None
+
+        assert SubAgent is MiddlewareSubAgent is OriginalSubAgent
+        assert SubAgent.__module__ == "deepagents.middleware.subagents"
+        assert get_type_hints(Config)["subagents"] == list[SubAgent] | None
+        assert get_type_hints(SubAgent)["name"] is str
+        assert set(SubAgent.__required_keys__) == {"name", "description"}
+    """)
+
+
+def test_concurrent_root_and_middleware_exports_share_original_definitions() -> None:
+    _run_in_fresh_process("""
+        from concurrent.futures import ThreadPoolExecutor
+        import deepagents
+        import deepagents.middleware as middleware
+
+        requests = [(deepagents, name) for name in deepagents.__all__]
+        requests += [(middleware, name) for name in middleware.__all__]
+        requests *= 2
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            values = list(pool.map(lambda item: getattr(*item), requests))
+        for (module, name), value in zip(requests, values, strict=True):
+            assert value is getattr(module, name)
+            if name in middleware.__all__:
+                assert value is getattr(middleware, name), name
+    """)

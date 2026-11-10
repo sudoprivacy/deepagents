@@ -47,34 +47,89 @@ Use a **plain tool** when:
 * The tool is specific to a single consumer (e.g. CLI-only)
 """
 
-from deepagents.middleware.async_subagents import AsyncSubAgent, AsyncSubAgentMiddleware
-from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
-from deepagents.middleware.memory import MemoryMiddleware
-from deepagents.middleware.rubric import (
-    GRADER_SYSTEM_PROMPT,
-    RUBRIC_GRADER_MESSAGE_SOURCE,
-    CriterionEval,
-    CriterionFail,
-    CriterionPass,
-    GraderResponse,
-    GraderVerdict,
-    RubricEvaluation,
-    RubricMiddleware,
-    RubricResult,
-    RubricState,
-)
-from deepagents.middleware.skills import SkillMetadata, SkillsMiddleware, SkillsState
-from deepagents.middleware.subagents import (
-    CompiledSubAgent,
-    SubAgent,
-    SubAgentMiddleware,
-)
-from deepagents.middleware.summarization import (
-    DEEPAGENTS_DEFAULT_SUMMARY_PROMPT,
-    SummarizationMiddleware,
-    SummarizationToolMiddleware,
-    create_summarization_tool_middleware,
-)
+from typing import TYPE_CHECKING
+
+from deepagents import _resolve_export
+
+if TYPE_CHECKING:
+    from deepagents.middleware.async_subagents import AsyncSubAgent, AsyncSubAgentMiddleware
+    from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+    from deepagents.middleware.memory import MemoryMiddleware
+    from deepagents.middleware.rubric import (
+        GRADER_SYSTEM_PROMPT,
+        RUBRIC_GRADER_MESSAGE_SOURCE,
+        CriterionEval,
+        CriterionFail,
+        CriterionPass,
+        GraderResponse,
+        GraderVerdict,
+        RubricEvaluation,
+        RubricMiddleware,
+        RubricResult,
+        RubricState,
+    )
+    from deepagents.middleware.skills import SkillMetadata, SkillsMiddleware, SkillsState
+    from deepagents.middleware.subagents import CompiledSubAgent, SubAgent, SubAgentMiddleware
+    from deepagents.middleware.summarization import (
+        DEEPAGENTS_DEFAULT_SUMMARY_PROMPT,
+        SummarizationMiddleware,
+        SummarizationToolMiddleware,
+        create_summarization_tool_middleware,
+    )
+
+_EXPORTS = {
+    "DEEPAGENTS_DEFAULT_SUMMARY_PROMPT": "deepagents.middleware.summarization",
+    "GRADER_SYSTEM_PROMPT": "deepagents.middleware.rubric",
+    "RUBRIC_GRADER_MESSAGE_SOURCE": "deepagents.middleware.rubric",
+    "AsyncSubAgent": "deepagents.middleware.async_subagents",
+    "AsyncSubAgentMiddleware": "deepagents.middleware.async_subagents",
+    "CompiledSubAgent": "deepagents.middleware.subagents",
+    "CriterionEval": "deepagents.middleware.rubric",
+    "CriterionFail": "deepagents.middleware.rubric",
+    "CriterionPass": "deepagents.middleware.rubric",
+    "FilesystemMiddleware": "deepagents.middleware.filesystem",
+    "FilesystemPermission": "deepagents.middleware.filesystem",
+    "GraderResponse": "deepagents.middleware.rubric",
+    "GraderVerdict": "deepagents.middleware.rubric",
+    "MemoryMiddleware": "deepagents.middleware.memory",
+    "RubricEvaluation": "deepagents.middleware.rubric",
+    "RubricMiddleware": "deepagents.middleware.rubric",
+    "RubricResult": "deepagents.middleware.rubric",
+    "RubricState": "deepagents.middleware.rubric",
+    "SkillMetadata": "deepagents.middleware.skills",
+    "SkillsMiddleware": "deepagents.middleware.skills",
+    "SkillsState": "deepagents.middleware.skills",
+    "SubAgent": "deepagents.middleware.subagents",
+    "SubAgentMiddleware": "deepagents.middleware.subagents",
+    "SummarizationMiddleware": "deepagents.middleware.summarization",
+    "SummarizationToolMiddleware": "deepagents.middleware.summarization",
+    "create_summarization_tool_middleware": "deepagents.middleware.summarization",
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve middleware exports without importing unrelated components.
+
+    Args:
+        name: Public attribute requested by the caller.
+
+    Returns:
+        The original object from its defining module.
+
+    Raises:
+        AttributeError: If the requested name is not a public export.
+    """
+    return _resolve_export(name, globals(), _EXPORTS)
+
+
+def __dir__() -> list[str]:
+    """List available exports without initializing middleware.
+
+    Returns:
+        The available module attribute names.
+    """
+    return sorted(set(globals()) | set(__all__))
+
 
 __all__ = [
     "DEEPAGENTS_DEFAULT_SUMMARY_PROMPT",

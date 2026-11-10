@@ -38,8 +38,8 @@ jobs:
       - run: uv sync --locked --all-groups
       - name: Lint and typecheck
         run: |
-          uv run --no-sync ruff check deepagents/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
-          uv run --no-sync ruff format --check deepagents/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ruff check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ruff format --check deepagents/__init__.py deepagents/middleware/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
           uv run --no-sync ty check deepagents
       - name: Original SDK suite and import controls
         run: uv run --no-sync --group test pytest tests/unit_tests -n 2 --disable-socket --allow-unix-socket --benchmark-disable --maxfail=1 --maxschedchunk=1 --junitxml "$RUNNER_TEMP/sdk.xml"
@@ -104,7 +104,7 @@ jobs:
           "$GITHUB_WORKSPACE/libs/deepagents/.venv/Scripts/python.exe" - <<'PY'
           from importlib.metadata import version
           import deepagents
-          assert version('deepagents') == deepagents.__version__ == '0.7.16.post1'
+          assert version('deepagents') == deepagents.__version__ == '0.7.16.post2'
           assert 'site-packages' in deepagents.__file__.replace('\\', '/')
           PY
           mkdir "$RUNNER_TEMP/installed-sdk-controls"

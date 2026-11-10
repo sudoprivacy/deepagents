@@ -61,13 +61,18 @@ def __getattr__(name: str) -> object:
     Raises:
         AttributeError: If the requested name is not a public export.
     """
-    module = _EXPORTS.get(name)
+    return _resolve_export(name, globals(), _EXPORTS)
+
+
+def _resolve_export(name: str, namespace: dict[str, object], exports: dict[str, str]) -> object:
+    """Load package exports under one reentrant lock across public namespaces."""
+    module = exports.get(name)
     if module is None:
-        msg = f"module {__name__!r} has no attribute {name!r}"
+        msg = f"module {namespace['__name__']!r} has no attribute {name!r}"
         raise AttributeError(msg)
     with _EXPORT_LOCK:
         value = getattr(import_module(module), name)
-        globals()[name] = value
+        namespace[name] = value
         return value
 
 
