@@ -1,0 +1,119 @@
+name: Maintained SDK
+
+on:
+  pull_request:
+    branches: [mosswork-0.7.16]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maintained-sdk-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Linux SDK and wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: libs/deepagents
+    env:
+      LANGSMITH_TRACING: 'false'
+      LANGCHAIN_TRACING_V2: 'false'
+      UV_FROZEN: 'true'
+      RUN_SANDBOX_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: libs/deepagents/uv.lock
+      - run: uv sync --locked --all-groups
+      - name: Lint and typecheck
+        run: |
+          uv run --no-sync ruff check deepagents/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ruff format --check deepagents/__init__.py deepagents/_version.py tests/unit_tests/test_public_imports.py
+          uv run --no-sync ty check deepagents
+      - name: Original SDK suite and import controls
+        run: uv run --no-sync --group test pytest tests/unit_tests -n 2 --disable-socket --allow-unix-socket --benchmark-disable --maxfail=1 --maxschedchunk=1 --junitxml "$RUNNER_TEMP/sdk.xml"
+      - name: Build source and reproducible wheel
+        env:
+          SOURCE_DATE_EPOCH: '1794312000'
+        run: |
+          uv build --no-sources --out-dir dist
+          uv build --no-sources --wheel --out-dir dist-repeat
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          wheel, = Path('dist').glob('*.whl')
+          repeat, = Path('dist-repeat').glob('*.whl')
+          assert wheel.read_bytes() == repeat.read_bytes()
+          print(wheel.name, hashlib.sha256(wheel.read_bytes()).hexdigest())
+          PY
+      - name: Preserve source-bound package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: maintained-sdk-package
+          path: libs/deepagents/dist/*
+          if-no-files-found: error
+      - name: Preserve test result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sdk-linux-tests
+          path: ${{ runner.temp }}/sdk.xml
+
+  windows:
+    name: Windows installed wheel
+    needs: package
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: libs/deepagents
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: libs/deepagents/uv.lock
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: maintained-sdk-package
+          path: ${{ runner.temp }}/maintained-sdk
+      - name: Install same built wheel and run original public API controls
+        env:
+          LANGSMITH_TRACING: 'false'
+          LANGCHAIN_TRACING_V2: 'false'
+        run: |
+          uv sync --locked --all-groups
+          uv pip install --python .venv/Scripts/python.exe --no-deps "$RUNNER_TEMP"/maintained-sdk/*.whl
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/libs/deepagents/.venv/Scripts/python.exe" - <<'PY'
+          from importlib.metadata import version
+          import deepagents
+          assert version('deepagents') == deepagents.__version__ == '0.7.16.post1'
+          assert 'site-packages' in deepagents.__file__.replace('\\', '/')
+          PY
+          mkdir "$RUNNER_TEMP/installed-sdk-controls"
+          cp -R "$GITHUB_WORKSPACE/libs/deepagents/tests" "$RUNNER_TEMP/installed-sdk-controls/tests"
+          cd "$RUNNER_TEMP/installed-sdk-controls"
+          "$GITHUB_WORKSPACE/libs/deepagents/.venv/Scripts/python.exe" -m pytest tests/unit_tests/test_public_imports.py -c "$GITHUB_WORKSPACE/libs/deepagents/pyproject.toml" -q --junitxml "$RUNNER_TEMP/sdk-windows.xml"
+      - name: Preserve installed-wheel test result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sdk-windows-tests
+          path: ${{ runner.temp }}/sdk-windows.xml
