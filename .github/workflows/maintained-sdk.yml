@@ -3,7 +3,7 @@ name: Maintained SDK
 on:
   pull_request:
     branches: [mosswork-0.7.16]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
